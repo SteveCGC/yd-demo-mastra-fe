@@ -1,6 +1,6 @@
 # wrangler.toml
 name = "yd-mastra-agent-api"
-main = "mastra/index.ts"
+main = "--import=./.mastra/output/instrumentation.mjs .mastra/output/index.mjs"
 compatibility_date = "2025-11-12"
 compatibility_flags = ["nodejs_compat"]
 
