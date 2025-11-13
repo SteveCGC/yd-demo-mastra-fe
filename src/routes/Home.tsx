@@ -62,10 +62,10 @@ const STORAGE_KEY = 'yd-weather-conversations'
 const quickActions = [
   {
     id: 'bj',
-    title: '北京 · 实时天气',
-    city: '北京',
+    title: '济南 · 实时天气',
+    city: '济南',
     description: '获取 24 小时温度曲线与出行建议',
-    prompt: '请以图文并茂的方式总结北京未来 24 小时的天气，并给出通勤与出行建议。',
+    prompt: '请以图文并茂的方式总结济南未来 24 小时的天气，并给出通勤与出行建议。',
     accent: '#0ea5e9',
   },
   {
@@ -141,7 +141,7 @@ const WeatherAssistant = () => {
   const [messageApi, contextHolder] = message.useMessage()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [city, setCity] = useState('北京')
+  const [city, setCity] = useState('济南')
   const [prompt, setPrompt] = useState('请告诉我今天的天气情况，并给出出行与穿衣建议。')
   const [searchTerm, setSearchTerm] = useState('')
   const [isSending, setIsSending] = useState(false)
@@ -157,15 +157,15 @@ const WeatherAssistant = () => {
         const parsed: Conversation[] = JSON.parse(raw)
         setConversations(parsed)
         setActiveId(parsed[0]?.id ?? null)
-        setCity(parsed[0]?.city || '北京')
+        setCity(parsed[0]?.city || '济南')
       } catch {
-        const seed = createConversation('北京')
+        const seed = createConversation('济南')
         setConversations([seed])
         setActiveId(seed.id)
-        setCity('北京')
+        setCity('济南')
       }
     } else {
-      const seed = createConversation('北京')
+      const seed = createConversation('济南')
       setConversations([seed])
       setActiveId(seed.id)
     }
@@ -195,7 +195,7 @@ const WeatherAssistant = () => {
 
   useEffect(() => {
     if (!activeConversation) return
-    setCity(activeConversation.city || '北京')
+    setCity(activeConversation.city || '济南')
   }, [activeConversation])
 
   useEffect(() => {
@@ -203,10 +203,10 @@ const WeatherAssistant = () => {
   }, [activeConversation?.messages.length])
 
   const handleCreateConversation = () => {
-    const next = createConversation('北京')
+    const next = createConversation('济南')
     setConversations((prev) => [next, ...prev])
     setActiveId(next.id)
-    setCity('北京')
+    setCity('济南')
     setPrompt('请告诉我今天的天气情况，并给出出行与穿衣建议。')
     messageApi.success('已创建新的天气对话')
   }
@@ -222,7 +222,7 @@ const WeatherAssistant = () => {
   }
 
   const handleClearConversations = () => {
-    const seed = createConversation('北京')
+    const seed = createConversation('济南')
     setConversations([seed])
     setActiveId(seed.id)
     messageApi.info('对话记录已重置')

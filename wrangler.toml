@@ -1,8 +1,25 @@
-# wrangler.toml
+# Cloudflare Worker configuration for the lightweight Mastra deployment.
+
 name = "yd-mastra-agent-api"
-main = "--import=./.mastra/output/instrumentation.mjs .mastra/output/index.mjs"
-compatibility_date = "2025-11-12"
-compatibility_flags = ["nodejs_compat"]
+main = "worker/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = [
+  "nodejs_compat",
+  "nodejs_compat_populate_process_env"
+]
 
 [vars]
-OPENAI_API_KEY = "你的密钥"
+NODE_ENV = "production"
+# Replace with your own non-sensitive defaults if needed. Use `wrangler secret put`
+# for values like OPENAI_API_KEY so they are not stored in plain text.
+AGENT_API_KEY = "set-with-wrangler-secret"
+OPENAI_API_KEY = "your-OPENAI_API_KEY"
+
+[observability.logs]
+enabled = true
+
+[[routes]]
+# Update these patterns if you want to attach a custom domain when using `wrangler dev`.
+pattern = "mastra-agent-api.changgongcai.shop"
+zone_name = "changgongcai.shop"
+custom_domain = true

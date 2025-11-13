@@ -1,16 +1,41 @@
-# React + Vite
+# YD Mastra Agent
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This workspace contains the Mastra agent (`mastra/`) plus a Vite dashboard (`src/`). The production backend is a lightweight Cloudflare Worker (`worker/index.ts`) that calls the Mastra agent directly without the hefty `#server` runtime.
 
-Currently, two official plugins are available:
+## Prerequisites
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Node.js 20+
+- A Cloudflare account with Workers enabled and an API token that can deploy Workers + manage routes
+- Required API keys (OpenAI, any custom agent keys)
 
-## React Compiler
+## Environment Variables
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Copy `.env.example` to `.env` and fill in the values:
 
-## Expanding the ESLint configuration
+```bash
+cp .env.example .env
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Key values:
+
+- `OPENAI_API_KEY` – used by the Mastra agent  
+- `AGENT_API_KEY` – optional custom key exposed to the Worker
+
+Secrets should not live in `wrangler.toml`. Instead, rely on the `.env` file locally and `wrangler secret put <NAME>` once the Worker is created.
+
+## Local Development
+
+- `npm run dev` – Frontend (Vite)
+- `npm run dev:mastra` – Run Mastra locally with the Cloudflare deployer disabled
+- `npm run lint` – ESLint
+
+## One-Command Cloudflare Deploy
+
+1. Ensure `.env` is populated and run `npm install` if you have not already.
+2. Execute:
+
+```bash
+npm run deploy:cloudflare
+```
+
+Wrangler builds `worker/index.ts` (which imports the `mastra` instance) and deploys it directly—no intermediate `.mastra/output` bundle is required, so the final Worker stays under Cloudflare's bundle limits. Adjust routes/custom domains via `wrangler.toml` if needed (the default file already includes a sample `[[routes]]` block).
