@@ -1,9 +1,9 @@
 
 import { Mastra } from '@mastra/core/mastra';
-import { weatherAgent } from './agents/weather-agent';
+import { codeReviewAgent } from './agents/code-review-agent';
 
 export const mastra = new Mastra({
-  agents: { weatherAgent },
+  agents: { codeReviewAgent },
   telemetry: {
     // Telemetry is deprecated and will be removed in the Nov 4th release
     enabled: false,

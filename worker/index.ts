@@ -1,21 +1,20 @@
 import { mastra } from '../mastra';
 
-const weatherAgent = mastra.getAgent('weatherAgent');
+const reviewAgent = mastra.getAgent('codeReviewAgent');
 
-type AgentMessage = {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-};
-
-type AgentRequestPayload = {
-  messages?: AgentMessage[];
-  prompt?: string;
-  city?: string;
+type ReviewRequest = {
+  code?: string;
+  filename?: string;
+  framework?: string;
+  context?: string;
 };
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
 };
+
+const REVIEW_PREFIX =
+  '请扮演资深前端代码评审者，对下面的代码进行结构化审查。请遵循“总体评价 -> 问题列表 -> 可行动 TODO” 的顺序输出，并使用 Markdown。';
 
 export default {
   async fetch(request: Request): Promise<Response> {
@@ -27,9 +26,9 @@ export default {
     }
 
     const url = new URL(request.url);
-    console.log('[worker] received request', url.pathname);
-    if (request.method === 'POST' && url.pathname === '/api/agents/weatherAgent/generate') {
-      return handleWeatherRequest(request);
+    console.log('[worker] received request', request.method, url.pathname);
+    if (request.method === 'POST' && url.pathname === '/api/review') {
+      return handleReviewRequest(request);
     }
 
     if (request.method === 'GET' && url.pathname === '/health') {
@@ -46,79 +45,55 @@ export default {
   },
 };
 
-async function handleWeatherRequest(request: Request): Promise<Response> {
-  let payload: AgentRequestPayload | undefined;
+async function handleReviewRequest(request: Request): Promise<Response> {
+  let payload: ReviewRequest;
 
   try {
-    payload = (await request.json()) as AgentRequestPayload;
+    payload = (await request.json()) as ReviewRequest;
   } catch {
     return jsonResponse({ error: '请求体必须是合法的 JSON' }, 400);
   }
-  console.log('[worker] weather agent payload', payload);
-  const messages = normalizeMessages(payload);
-  console.log('[worker] normalized messages', messages);
-  if (!messages) {
-    return jsonResponse(
-      {
-        error:
-          '请提供 messages 数组，或者指定 prompt/city 字段来描述查询内容。',
-      },
-      400,
-    );
+
+  if (!payload.code || !payload.code.trim()) {
+    return jsonResponse({ error: '请提供需要评审的 code 字段。' }, 400);
   }
 
-  try {
-    const result = await weatherAgent.stream(messages);
-    let text = '';
+  const userPrompt = buildPrompt(payload);
 
+  try {
+    const result = await reviewAgent.stream([
+      {
+        role: 'user',
+        content: userPrompt,
+      },
+    ]);
+
+    let report = '';
     for await (const chunk of result.textStream) {
-      text += chunk;
+      report += chunk;
     }
 
     return jsonResponse({
       success: true,
-      text: text.trim(),
+      report: report.trim(),
     });
   } catch (error) {
-    console.error('[worker] weather agent failed', error);
-    return jsonResponse({ error: 'Weather agent 执行失败' }, 500);
+    console.error('[worker] review agent failed', error);
+    return jsonResponse({ error: '代码评审失败，请稍后再试。' }, 500);
   }
 }
 
-function normalizeMessages(
-  payload: AgentRequestPayload | undefined,
-): AgentMessage[] | null {
-  if (!payload) return null;
-  if (
-    Array.isArray(payload.messages) &&
-    payload.messages.length > 0 &&
-    payload.messages.every(
-      (msg) =>
-        typeof msg === 'object' &&
-        typeof (msg as AgentMessage).role === 'string' &&
-        typeof (msg as AgentMessage).content === 'string',
-    )
-  ) {
-    return payload.messages as AgentMessage[];
-  }
+function buildPrompt(payload: ReviewRequest): string {
+  const sections = [
+    REVIEW_PREFIX,
+    payload.context ? `背景信息：${payload.context}` : null,
+    payload.framework ? `框架/技术栈：${payload.framework}` : null,
+    payload.filename ? `文件名：${payload.filename}` : null,
+    `代码：\n\`\`\`\n${payload.code?.trim()}\n\`\`\``,
+    '请至少给出三条问题，并提供修复建议与严重程度。',
+  ].filter(Boolean);
 
-  const basePrompt =
-    typeof payload.prompt === 'string' && payload.prompt.trim()
-      ? payload.prompt.trim()
-      : payload.city
-        ? `请根据 ${payload.city} 的天气情况提供详细的活动建议。`
-        : null;
-
-  if (!basePrompt) {
-    return null;
-  }
-
-  return [
-    {
-      role: 'user',
-      content: basePrompt,
-    },
-  ];
+  return sections.join('\n\n');
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -128,9 +103,7 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-function corsHeaders(
-  extra: Record<string, string> = {},
-): Record<string, string> {
+function corsHeaders(extra: Record<string, string> = {}): Record<string, string> {
   return {
     'access-control-allow-origin': '*',
     'access-control-allow-methods': 'GET,POST,OPTIONS',

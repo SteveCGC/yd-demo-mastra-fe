@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', '.mastra']),
+  globalIgnores(['dist', '.mastra', '.wrangler']),
   {
     files: ['**/*.{js,jsx,ts,tsx}'],
     extends: [js.configs.recommended, reactHooks.configs['recommended-latest'], reactRefresh.configs.vite],
@@ -28,7 +28,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['lib/**/*.{js,jsx,ts,tsx}', 'mastra/**/*.{js,jsx,ts,tsx}'],
+    files: ['mastra/**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       globals: {
         ...globals.node,

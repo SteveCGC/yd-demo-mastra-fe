@@ -1,572 +1,384 @@
 import {
-  AppstoreOutlined,
-  CloudOutlined,
-  CompassOutlined,
-  DeleteOutlined,
-  EnvironmentOutlined,
-  HistoryOutlined,
-  MessageOutlined,
-  PlusOutlined,
-  SearchOutlined,
+  BulbOutlined,
+  CheckCircleOutlined,
+  CodeOutlined,
+  FileAddOutlined,
+  FireOutlined,
   SendOutlined,
-  SettingOutlined,
-  ShareAltOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
-  Badge,
   Button,
   Card,
+  Divider,
   Empty,
   Input,
-  Layout,
   List,
   message,
+  Select,
   Space,
   Spin,
-  Statistic,
   Tag,
-  Tooltip,
   Typography,
 } from 'antd'
-import type { TextAreaRef } from 'antd/es/input/TextArea'
 import ReactMarkdown from 'react-markdown'
-import type { Components } from 'react-markdown'
-import { useEffect, useMemo, useRef, useState } from 'react'
 import remarkGfm from 'remark-gfm'
-import { mastraClient } from '../../lib/mastra'
+import { type ReactNode, useMemo, useState } from 'react'
 
-const { Sider, Content } = Layout
-const { Title, Text, Paragraph } = Typography
+const { Title, Paragraph, Text } = Typography
 const { TextArea } = Input
 
-type ChatRole = 'user' | 'assistant'
+const FRAMEWORK_OPTIONS = [
+  { label: 'React / Next.js', value: 'react' },
+  { label: 'Vue 3', value: 'vue' },
+  { label: 'Svelte', value: 'svelte' },
+  { label: '组件库 / 样式系统', value: 'css' },
+  { label: '其他', value: 'general' },
+]
 
-interface ChatMessage {
-  id: string
-  role: ChatRole
-  content: string
-  timestamp: string
-}
+const CHECKPOINTS = [
+  '状态管理与数据流',
+  '可访问性 (a11y)',
+  '性能 & 体积',
+  '样式与设计体系',
+  '可读性与可维护性',
+  '错误处理与异常边界',
+]
 
-interface Conversation {
-  id: string
-  title: string
-  city: string
-  createdAt: string
-  messages: ChatMessage[]
-}
-
-const STORAGE_KEY = 'yd-weather-conversations'
-
-const quickActions = [
+const PRESET_SNIPPETS = [
   {
-    id: 'bj',
-    title: '济南 · 实时天气',
-    city: '济南',
-    description: '获取 24 小时温度曲线与出行建议',
-    prompt: '请以图文并茂的方式总结济南未来 24 小时的天气，并给出通勤与出行建议。',
-    accent: '#0ea5e9',
+    id: 'react-form',
+    title: 'React 表单组件',
+    framework: 'react',
+    code: `import { useState } from 'react'
+import './Form.css'
+
+export function ProfileForm() {
+  const [form, setForm] = useState({ name: '', email: '', agree: false })
+
+  function update(key: keyof typeof form, value: string | boolean) {
+    setForm({ ...form, [key]: value })
+  }
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    fetch('/api/profile', {
+      method: 'POST',
+      body: JSON.stringify(form),
+    })
+  }
+
+  return (
+    <form className="form" onSubmit={handleSubmit}>
+      <label>
+        Name
+        <input value={form.name} onChange={(event) => update('name', event.target.value)} />
+      </label>
+      <label>
+        Email
+        <input value={form.email} onChange={(event) => update('email', event.target.value)} />
+      </label>
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={form.agree}
+          onChange={(event) => update('agree', event.target.checked)}
+        />
+        I agree to receive newsletters
+      </label>
+      <button type="submit">保存</button>
+    </form>
+  )
+}`,
+    context: '组件用于个人信息编辑，需要考虑移动端和可访问性。',
   },
   {
-    id: 'sh',
-    title: '上海 · 穿衣建议',
-    city: '上海',
-    description: '结合体感温度给出穿搭提示',
-    prompt: '请根据上海今天的气象要素，输出一份分时段的穿衣建议，并包含防晒/防雨提示。',
-    accent: '#f97316',
-  },
-  {
-    id: 'cd',
-    title: '成都 · 亲子活动',
-    city: '成都',
-    description: '根据天气推荐亲子活动',
-    prompt: '请结合天气情况，推荐 3 个适合亲子出行的室内/室外活动，并写明最佳时间段。',
-    accent: '#22c55e',
+    id: 'vue-table',
+    title: 'Vue 表格渲染',
+    framework: 'vue',
+    code: `<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+
+const rows = ref([])
+
+onMounted(async () => {
+  const resp = await fetch('/api/users')
+  rows.value = await resp.json()
+})
+</script>
+
+<template>
+  <table class="user-table">
+    <tr v-for="item in rows" :key="item.id">
+      <td>{{ item.name }}</td>
+      <td>{{ item.email }}</td>
+      <td>
+        <button @click="$emit('open', item)">Open</button>
+      </td>
+    </tr>
+  </table>
+</template>`,
+    context: '需要支持空状态、高亮行、以及 5k+ 行的性能优化。',
   },
 ]
 
-const markdownComponents: Components = {
-  h1: ({ children }) => <Title level={3}>{children}</Title>,
-  h2: ({ children }) => <Title level={4}>{children}</Title>,
-  h3: ({ children }) => <Title level={5}>{children}</Title>,
-  p: ({ children }) => (
-    <Paragraph style={{ marginBottom: 8, whiteSpace: 'pre-wrap' }}>{children}</Paragraph>
+const DEFAULT_CODE = PRESET_SNIPPETS[0].code
+
+const API_ENDPOINT = import.meta.env.VITE_MASTRA_API_URL + '/api/review'
+
+type ReviewRecord = {
+  id: string
+  createdAt: string
+  summary: string
+}
+
+const markdownComponents = {
+  h1: ({ children }: { children: ReactNode }) => <Title level={3}>{children}</Title>,
+  h2: ({ children }: { children: ReactNode }) => <Title level={4}>{children}</Title>,
+  h3: ({ children }: { children: ReactNode }) => <Title level={5}>{children}</Title>,
+  p: ({ children }: { children: ReactNode }) => (
+    <Paragraph style={{ whiteSpace: 'pre-wrap' }}>{children}</Paragraph>
   ),
-  strong: ({ children }) => <strong>{children}</strong>,
-  ul: ({ children }) => <ul className="markdown-list">{children}</ul>,
-  ol: ({ children }) => <ol className="markdown-list ordered">{children}</ol>,
-  li: ({ children }) => <li>{children}</li>,
-  a: ({ children, href }) => (
-    <a href={href} target="_blank" rel="noreferrer" className="markdown-link">
-      {children}
-    </a>
-  ),
-  code: ({ inline, children }) =>
-    inline ? (
-      <code className="markdown-code-inline">{children}</code>
-    ) : (
-      <pre className="markdown-code-block">
-        <code>{children}</code>
-      </pre>
-    ),
 }
 
-function createConversation(city: string): Conversation {
-  const now = new Date().toISOString()
-  return {
-    id: crypto.randomUUID(),
-    title: `${city || '未命名城市'} · 天气助手`,
-    city,
-    createdAt: now,
-    messages: [
-      {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `你好，我是你的天气助手。告诉我关于「${city || '你关心的城市'}」的任何问题，我会结合实时天气给出建议。`,
-        timestamp: now,
-      },
-    ],
-  }
-}
-
-function formatTime(value: string) {
-  return new Date(value).toLocaleString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-const WeatherAssistant = () => {
+const Home = () => {
+  const [code, setCode] = useState(DEFAULT_CODE)
+  const [framework, setFramework] = useState<string>('react')
+  const [context, setContext] = useState('')
+  const [filename, setFilename] = useState('Form.tsx')
+  const [report, setReport] = useState<string | null>(null)
+  const [history, setHistory] = useState<ReviewRecord[]>([])
+  const [isReviewing, setIsReviewing] = useState(false)
   const [messageApi, contextHolder] = message.useMessage()
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [city, setCity] = useState('济南')
-  const [prompt, setPrompt] = useState('请告诉我今天的天气情况，并给出出行与穿衣建议。')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [isSending, setIsSending] = useState(false)
-  const [isInitializing, setIsInitializing] = useState(true)
-  const messagesEndRef = useRef<HTMLDivElement | null>(null)
-  const textareaRef = useRef<TextAreaRef>(null)
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      try {
-        const parsed: Conversation[] = JSON.parse(raw)
-        setConversations(parsed)
-        setActiveId(parsed[0]?.id ?? null)
-        setCity(parsed[0]?.city || '济南')
-      } catch {
-        const seed = createConversation('济南')
-        setConversations([seed])
-        setActiveId(seed.id)
-        setCity('济南')
-      }
-    } else {
-      const seed = createConversation('济南')
-      setConversations([seed])
-      setActiveId(seed.id)
-    }
-    setIsInitializing(false)
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations))
-  }, [conversations])
-
-  const activeConversation = useMemo(
-    () => conversations.find((conversation) => conversation.id === activeId) ?? null,
-    [conversations, activeId],
-  )
-
-  const filteredConversations = useMemo(() => {
-    if (!searchTerm.trim()) return conversations
-    return conversations.filter((conversation) => {
-      const keyword = searchTerm.toLowerCase()
-      return (
-        conversation.title.toLowerCase().includes(keyword) ||
-        conversation.city.toLowerCase().includes(keyword)
-      )
-    })
-  }, [conversations, searchTerm])
-
-  useEffect(() => {
-    if (!activeConversation) return
-    setCity(activeConversation.city || '济南')
-  }, [activeConversation])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [activeConversation?.messages.length])
-
-  const handleCreateConversation = () => {
-    const next = createConversation('济南')
-    setConversations((prev) => [next, ...prev])
-    setActiveId(next.id)
-    setCity('济南')
-    setPrompt('请告诉我今天的天气情况，并给出出行与穿衣建议。')
-    messageApi.success('已创建新的天气对话')
+  const summaryFromReport = (text: string) => {
+    const firstLine = text.split('\n').find((line) => line.trim().length > 0)
+    return firstLine ?? '新的评审'
   }
 
-  const handleDeleteConversation = (id: string) => {
-    setConversations((prev) => {
-      const filtered = prev.filter((item) => item.id !== id)
-      if (activeId === id) {
-        setActiveId(filtered[0]?.id ?? null)
-      }
-      return filtered
-    })
-  }
-
-  const handleClearConversations = () => {
-    const seed = createConversation('济南')
-    setConversations([seed])
-    setActiveId(seed.id)
-    messageApi.info('对话记录已重置')
-  }
-
-  const updateConversationMessages = (conversationId: string, updater: (messages: ChatMessage[]) => ChatMessage[]) => {
-    setConversations((prev) =>
-      prev.map((conversation) => {
-        if (conversation.id !== conversationId) return conversation
-        return {
-          ...conversation,
-          messages: updater(conversation.messages),
-        }
-      }),
-    )
-  }
-
-  const handleSend = async (overrides?: { city?: string; prompt?: string }) => {
-    const targetCity = (overrides?.city ?? city).trim()
-    const targetPrompt = (overrides?.prompt ?? prompt).trim()
-
-    if (!targetCity) {
-      messageApi.warning('请先填写想查询的城市')
+  const handleReview = async () => {
+    if (!code.trim()) {
+      messageApi.warning('请先粘贴需要评审的代码。')
       return
     }
 
-    if (!targetPrompt) {
-      messageApi.warning('请输入你想咨询的问题')
-      return
-    }
-
-    setCity(targetCity)
-    setPrompt('')
-    setIsSending(true)
-
-    let conversation = activeConversation
-    let shouldPrepend = false
-
-    if (!conversation) {
-      conversation = createConversation(targetCity)
-      shouldPrepend = true
-      setActiveId(conversation.id)
-    }
-
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: `城市：${targetCity}\n需求：${targetPrompt}`,
-      timestamp: new Date().toISOString(),
-    }
-
-    const optimisticConversation: Conversation = {
-      ...conversation,
-      city: targetCity,
-      title: `${targetCity} · 天气助手`,
-      messages: [...conversation.messages, userMessage],
-    }
-
-    setConversations((prev) => {
-      if (shouldPrepend) {
-        return [optimisticConversation, ...prev]
-      }
-      return prev.map((item) => (item.id === optimisticConversation.id ? optimisticConversation : item))
-    })
-
+    setIsReviewing(true)
+    setReport(null)
     try {
-      const agent = mastraClient.getAgent('weatherAgent')
-      const response = await agent.generate({
-        messages: optimisticConversation.messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
+      const response = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          context,
+          filename,
+          framework,
+        }),
       })
 
-      const assistantMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: response.text,
-        timestamp: new Date().toISOString(),
+      const result = await response.json()
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '评审失败')
       }
 
-      updateConversationMessages(optimisticConversation.id, (messages) => [...messages, assistantMessage])
-      textareaRef.current?.focus()
+      setReport(result.report)
+      setHistory((prev) => [
+        {
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          summary: summaryFromReport(result.report),
+        },
+        ...prev.slice(0, 4),
+      ])
+      messageApi.success('评审已生成')
     } catch (error) {
       console.error(error)
-      messageApi.error('请求天气助手失败，请稍后再试')
-      const errorMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: '抱歉，暂时无法连接到天气助手，请稍后再试一次。',
-        timestamp: new Date().toISOString(),
-      }
-      updateConversationMessages(optimisticConversation.id, (messages) => [...messages, errorMessage])
+      messageApi.error('评审失败，请稍后再试。')
     } finally {
-      setIsSending(false)
+      setIsReviewing(false)
     }
   }
 
-  const handleQuickAction = (action: (typeof quickActions)[number]) => {
-    setCity(action.city)
-    setPrompt(action.prompt)
-    messageApi.success(`已为你准备好「${action.title}」的提问，可直接发送`)
-  }
+  const activeHints = useMemo(
+    () =>
+      CHECKPOINTS.map((item) => ({
+        label: item,
+        icon: <CheckCircleOutlined />,
+      })),
+    [],
+  )
 
-  const selectedMessages = activeConversation?.messages ?? []
-  const handleActivateConversation = (conversation: Conversation) => {
-    setActiveId(conversation.id)
-    setCity(conversation.city)
-    setPrompt('请告诉我今天的天气情况，并给出出行与穿衣建议。')
+  const applyPreset = (presetId: string) => {
+    const target = PRESET_SNIPPETS.find((item) => item.id === presetId)
+    if (!target) return
+    setFramework(target.framework)
+    setContext(target.context || '')
+    setCode(target.code)
+    setFilename(target.framework === 'vue' ? 'Table.vue' : 'Component.tsx')
+    messageApi.success(`已载入示例：${target.title}`)
   }
-  const messageCount = selectedMessages.length
 
   return (
-    <Layout className="assistant-layout">
+    <div className="review-app">
       {contextHolder}
-      <Sider width={320} className="app-sider">
-        <div className="sider-inner">
-          <div className="sider-os-bar">
-            <span className="sider-dot red" />
-            <span className="sider-dot yellow" />
-            <span className="sider-dot green" />
-          </div>
-          <div className="sider-brand">
-            <div>
-              <Title level={4} style={{ marginBottom: 0 }}>
-                Aurora Weather
-              </Title>
-              <Text type="secondary">Mastra Agent</Text>
-            </div>
-            <Tag color="blue">实时 · 智能</Tag>
-          </div>
-
-          <Input
-            prefix={<SearchOutlined />}
-            placeholder="搜索对话或城市"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            allowClear
-          />
-          <Button type="primary" icon={<PlusOutlined />} size="large" block onClick={handleCreateConversation}>
-            新建对话
-          </Button>
-
-          <div className="sider-section-label">
-            <MessageOutlined />
-            <span>对话</span>
-          </div>
-          <div className="conversation-section">
-            {filteredConversations.length ? (
-              <div className="conversation-list">
-                {filteredConversations.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`conversation-card ${item.id === activeId ? 'active' : ''}`}
-                    onClick={() => handleActivateConversation(item)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        handleActivateConversation(item)
-                      }
-                    }}
-                  >
-                    <div className="conversation-meta">
-                      <div>
-                        <Text strong ellipsis style={{ maxWidth: 160 }}>
-                          {item.title}
-                        </Text>
-                        <Text type="secondary" style={{ display: 'block' }}>
-                          {new Date(item.createdAt).toLocaleDateString('zh-CN')}
-                        </Text>
-                      </div>
-                      <Tag color="blue">{item.city || '未命名'}</Tag>
-                    </div>
-                    <Tooltip title="删除对话">
-                      <Button
-                        type="text"
-                        icon={<DeleteOutlined />}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleDeleteConversation(item.id)
-                        }}
-                      />
-                    </Tooltip>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <Empty description="暂无匹配的对话" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            )}
-          </div>
-
-          <div className="sider-section-label">
-            <AppstoreOutlined />
-            <span>快速提问</span>
-          </div>
-          <div className="quick-action-grid">
-            {quickActions.map((action) => (
-              <button
-                key={action.id}
-                type="button"
-                className="quick-action-tile"
-                onClick={() => handleQuickAction(action)}
-              >
-                <div className="quick-action-accent" style={{ background: action.accent }} />
-                <div className="quick-action-body">
-                  <Text strong ellipsis>
-                    {action.title}
-                  </Text>
-                  <Paragraph type="secondary" style={{ margin: 0 }} ellipsis={{ rows: 2 }}>
-                    {action.description}
-                  </Paragraph>
-                </div>
-                <Tag icon={<EnvironmentOutlined />} color="success">
-                  {action.city}
-                </Tag>
-              </button>
-            ))}
-          </div>
+      <header className="hero">
+        <div>
+          <Title level={2} style={{ marginBottom: 8 }}>
+            前端代码评审助手
+          </Title>
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            粘贴组件或页面源码，由 AI 生成结构化的代码审查建议，覆盖性能、可访问性、可维护性等维度。
+          </Paragraph>
         </div>
-        <div className="sider-footer">
-          <Button icon={<HistoryOutlined />} onClick={handleClearConversations} block>
-            重置对话
-          </Button>
-          <Button type="text" icon={<ShareAltOutlined />} onClick={() => messageApi.info('分享功能开发中')}>
-            分享
-          </Button>
-        </div>
-      </Sider>
-      <Layout className="content-layout">
-        <div className="top-bar">
-          <div>
-            <Title level={4} style={{ margin: 0 }}>
-              天气助手
-            </Title>
-            <Text type="secondary">智能洞察 + 实时气象，帮你规划每一天。</Text>
-          </div>
-          <Space>
-            <Button icon={<CloudOutlined />} ghost>
-              实况同步
-            </Button>
-            <Button icon={<ThunderboltOutlined />} ghost>
-              智能建议
-            </Button>
-            <Button icon={<SettingOutlined />} type="text" />
-          </Space>
-        </div>
-        <Content className="chat-content">
-          <div className="chat-overview">
-            <Card size="small" bordered={false}>
-              <Statistic
-                title="当前城市"
-                value={activeConversation?.city || '未设置'}
-                prefix={<EnvironmentOutlined />}
-                valueStyle={{ fontSize: 20 }}
-              />
-            </Card>
-            <Card size="small" bordered={false}>
-              <Statistic
-                title="历史消息"
-                value={messageCount}
-                prefix={<HistoryOutlined />}
-                valueStyle={{ fontSize: 20 }}
-              />
-            </Card>
-            <Card size="small" bordered={false}>
-              <Statistic
-                title="对话数"
-                value={conversations.length}
-                prefix={<CompassOutlined />}
-                valueStyle={{ fontSize: 20 }}
-              />
-            </Card>
-          </div>
+        <Space>
+          <Tag icon={<FireOutlined />} color="blue">
+            React
+          </Tag>
+          <Tag icon={<FireOutlined />} color="green">
+            Vue
+          </Tag>
+          <Tag icon={<FireOutlined />} color="purple">
+            Web Components
+          </Tag>
+        </Space>
+      </header>
 
-          <div className="chat-messages">
-            {isInitializing ? (
-              <div className="chat-placeholder">
-                <Spin tip="加载对话中..." />
-              </div>
-            ) : selectedMessages.length ? (
-              selectedMessages.map((messageItem) => (
-                <div
-                  key={messageItem.id}
-                  className={`message-bubble ${messageItem.role === 'user' ? 'user' : 'assistant'}`}
-                >
-                  <div className="message-meta">
-                    <Badge color={messageItem.role === 'user' ? 'geekblue' : 'green'} />
-                    <Text type="secondary">{messageItem.role === 'user' ? '你' : '天气助手'}</Text>
-                    <Text type="secondary">· {formatTime(messageItem.timestamp)}</Text>
-                  </div>
-                  <div className="markdown-body">
-                    <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={markdownComponents}
-                  >
-                    {messageItem.content}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="chat-placeholder">
-                <Empty description="还没有任何对话，先在左侧创建一个吧～" />
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+      <main className="review-layout">
+        <section className="panel input-panel">
+          <div className="panel-header">
+            <CodeOutlined />
+            <span>粘贴需要评审的代码</span>
           </div>
-
-          <div className="chat-composer">
-            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <Input
-                size="large"
-                prefix={<EnvironmentOutlined />}
-                placeholder="请输入想查询的城市"
-                value={city}
-                onChange={(event) => setCity(event.target.value)}
-              />
+          <div className="panel-body">
+            <Space direction="vertical" size="middle" style={{ width: '100%',flex: 1 }}>
+              <Space direction="horizontal" size="middle" wrap>
+                <Select
+                  value={framework}
+                  onChange={setFramework}
+                  options={FRAMEWORK_OPTIONS}
+                  style={{ minWidth: 200 }}
+                />
+                <Input
+                  placeholder="可选：代码文件名"
+                  value={filename}
+                  onChange={(event) => setFilename(event.target.value)}
+                />
+              </Space>
               <TextArea
-                ref={textareaRef}
-                autoSize={{ minRows: 3, maxRows: 6 }}
-                placeholder="告诉我你想了解的天气场景，例如：'本周末上海适合骑行吗？'"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                onPressEnter={(event) => {
-                  if (!event.shiftKey) {
-                    event.preventDefault()
-                    handleSend()
-                  }
-                }}
+                className="code-input"
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                spellCheck={false}
+                placeholder="在此粘贴需要评审的前端代码片段……"
               />
-              <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                <Text type="secondary">由 Mastra Client 驱动的天气智能体</Text>
-                <Button type="primary" icon={<SendOutlined />} loading={isSending} onClick={() => handleSend()}>
-                  发送
+              <Input.TextArea
+                autoSize={{ minRows: 2, maxRows: 4 }}
+                value={context}
+                onChange={(event) => setContext(event.target.value)}
+                placeholder="可选：补充背景信息（例如：业务上下文、遗留限制、性能目标等）"
+              />
+              <Space>
+                <Button icon={<FileAddOutlined />} onClick={() => applyPreset('react-form')}>
+                  React 示例
+                </Button>
+                <Button icon={<FileAddOutlined />} onClick={() => applyPreset('vue-table')}>
+                  Vue 示例
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  size="large"
+                  loading={isReviewing}
+                  onClick={handleReview}
+                >
+                  {isReviewing ? '正在评审…' : '生成评审建议'}
                 </Button>
               </Space>
+
             </Space>
           </div>
-        </Content>
-      </Layout>
-    </Layout>
+          <div className="insight-section">
+            <div className="section-title">
+              <BulbOutlined />
+              <span>评审关注点</span>
+            </div>
+            <div className="insight-grid">
+              {activeHints.map((item) => (
+                <Tag key={item.label} icon={item.icon} color="geekblue">
+                  {item.label}
+                </Tag>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="panel output-panel">
+          <div className="panel-header">
+            <SendOutlined />
+            <span>评审结果</span>
+          </div>
+          <div className="panel-body report-panel">
+            {isReviewing ? (
+              <div className="report-placeholder">
+                <Spin tip="AI 正在阅读代码…" />
+              </div>
+            ) : report ? (
+              <div className="markdown-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents as any}>
+                  {report}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <Empty
+                description={
+                  <span>
+                    尚未生成报告。粘贴代码后点击 <strong>生成评审建议</strong>。
+                  </span>
+                }
+              />
+            )}
+          </div>
+
+          <Divider />
+          <div className="history-section">
+            <div className="section-title">
+              <HistoryTimelineIcon />
+              <span>最近评审</span>
+            </div>
+            {history.length === 0 ? (
+              <Paragraph type="secondary">暂无记录。</Paragraph>
+            ) : (
+              <List
+                size="small"
+                dataSource={history}
+                renderItem={(item) => (
+                  <List.Item>
+                    <Space direction="vertical" size={0}>
+                      <Text>{item.summary}</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {new Date(item.createdAt).toLocaleString('zh-CN')}
+                      </Text>
+                    </Space>
+                  </List.Item>
+                )}
+              />
+            )}
+          </div>
+        </section>
+      </main>
+    </div>
   )
 }
 
-export default WeatherAssistant
+const HistoryTimelineIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <path
+      d="M12 5v7h4m6 0a10 10 0 11-3.06-7.14"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+export default Home

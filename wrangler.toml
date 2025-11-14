@@ -13,7 +13,7 @@ NODE_ENV = "production"
 # Replace with your own non-sensitive defaults if needed. Use `wrangler secret put`
 # for values like OPENAI_API_KEY so they are not stored in plain text.
 AGENT_API_KEY = "set-with-wrangler-secret"
-OPENAI_API_KEY = "your-OPENAI_API_KEY"
+OPENAI_API_KEY = "open-api-key"
 
 [observability.logs]
 enabled = true
